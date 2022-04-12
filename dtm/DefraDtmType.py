@@ -1,4 +1,5 @@
 import uuid
+from time import sleep
 
 import requests
 from osgeo import gdal
@@ -28,22 +29,12 @@ class DefraDtmType(DtmType):
             }
         )
 
-        print(resp.url)
-
         with open("hm.tiff", "wb") as f:
             f.write(resp.content)
-
-        import logging
-        logging.basicConfig(level=logging.DEBUG)
-
-        gdal.SetConfigOption("CPL_DEBUG", "ON")
-        gdal.UseExceptions()
-        gdal.ConfigurePythonLogging()
 
         # Load the TIFF into a memory map, that GDAL can then read
         mmap_name = f"/vsimem/{uuid.uuid4().hex}"
         gdal.FileFromMemBuffer(mmap_name, resp.content)
 
-        ds = gdal.Open(mmap_name)
+        ds = gdal.Open(mmap_name, gdal.GA_ReadOnly)
         return ds
-

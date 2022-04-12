@@ -2,22 +2,16 @@
 Ray queries using the pyembree package with the
 API wrapped to match our native raytracer.
 """
-import faulthandler
-import sys
-
-import numpy as np
 
 from copy import deepcopy
 
 import embree
-
-from trimesh.ray.ray_util import contains_points
-
-from trimesh import util
+import numpy as np
 from trimesh import caching
 from trimesh import intersections
-
+from trimesh import util
 from trimesh.constants import log_time
+from trimesh.ray.ray_util import contains_points
 
 # the factor of geometry.scale to offset a ray from a triangle
 # to reliably not hit its origin triangle
@@ -96,6 +90,9 @@ class RayMeshIntersector(object):
           Indexes of ray
         index_tri : (m,) int
           Indexes of mesh.faces
+          :param ray_directions:
+          :param ray_origins:
+          :param multiple_hits:
         """
         (index_tri,
          index_ray,
@@ -366,19 +363,19 @@ class _EmbreeWrap(object):
 
         rh.tnear[:] = 0
         rh.tfar[:] = np.inf
+        rh.time[:] = 0
         rh.prim_id[:] = embree.INVALID_GEOMETRY_ID
         rh.geom_id[:] = embree.INVALID_GEOMETRY_ID
 
-        # for i in range(ray_count):
         np.copyto(rh.org, origins)
         np.copyto(rh.dir, normals)
-        # rh.org = origins
-        # rh.dir = normals
 
         context = embree.IntersectContext()
         context.flags = embree.IntersectContextFlags.COHERENT
 
         self.scene.intersect1M(context, rh)
+
+        print(rh.tfar)
 
         return rh.prim_id, rh.tfar
 

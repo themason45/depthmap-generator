@@ -68,6 +68,19 @@ def coord_string(x, y, z):
     return s
 
 
+def distmat(a, index, size):
+    # For each item in a
+    # Find the difference on each axis and square it
+
+    distances = np.zeros((size, 1))
+    for i, point in enumerate(a):
+        x, y, z = point
+
+        distances[i] = np.sqrt((x - index[0]) ** 2 + (y - index[1]) ** 2 + (z - index[2]) ** 2)
+
+    return distances
+
+
 class Viewer(SceneViewer):
 
     def on_mouse_press(self, x, y, buttons, modifiers):

@@ -1,36 +1,38 @@
+#!./venv/bin/python
+
 import csv
 import faulthandler
-import sys
+
+from osgeo import gdal
+
+from dtm.DefraDtmType import DefraDtmType
 
 import numpy as np
 import trimesh
 from pyproj import Proj, Transformer
 
-from dtm.DefraDtmType import DefraDtmType
 from dtm.camera import DTCamera
-from dtm.helpers import generate_bbox, coord_string
+from dtm.helpers import generate_bbox, coord_string, Viewer, distmat
 from dtm.image import Image
 from embreeintersector import RayMeshIntersector
 
-import matplotlib as plt
+from matplotlib import pyplot as plt, cm
+import PIL
 
 P_EPSG4326 = Proj("epsg:4326")
 P_EPSG3857 = Proj("epsg:3857")
 
 if __name__ == '__main__':
-    faulthandler.enable(file=sys.stderr, all_threads=False)
+    faulthandler.enable()
+    gdal.UseExceptions()
 
     with open("tmp/imageinfo.csv", "r") as f:
         reader = csv.reader(f, delimiter="\t")
         keys, vals = reader
         img = Image({k: v for k, v in zip(keys, vals)})
 
-        print(img.campos)
-
         transformer = Transformer.from_crs("epsg:4326", "epsg:3857")
         coords = transformer.transform(*reversed(img.campos[:2]))
-
-        print(coords)
 
         # coord = [-298097, 7008381]
         dtm = DefraDtmType(generate_bbox(*coords), scale=0.1)
@@ -48,13 +50,12 @@ if __name__ == '__main__':
         intersector = RayMeshIntersector(mesh)
 
         m_cam = DTCamera(image=img, coords=coords)
-        m_cam.resolution = [100, 100]
+        m_cam.resolution = [img.width * 0.15, img.height * 0.15]
 
         h, _, _, _ = intersector.intersects_location([m_cam.cam_pt], [[0, 0, -1]])
 
-        print(h[0, 2])
         m_cam.z_offset = h[0, 2] * 2
-        vectors, _ = m_cam.to_rays()
+        vectors, pixels = m_cam.to_rays()
 
         v = np.array(list(map(lambda v: img.rs_matrix()[:3, :3] @ v, vectors)))
         o = np.tile(m_cam.cam_pt, (v.shape[0], 1))
@@ -65,10 +66,51 @@ if __name__ == '__main__':
 
         list(scene.add_geometry(m) for m in m_cam.marker)
 
-        print(dists)
-        d = dists.reshape((100, 100))
-        plt.imshow(d, interpolation='nearest')
+        fig, axs = plt.subplots(ncols=3, figsize=(15, 5))
+
+        print("Calculating euclid")
+        d = distmat(locs, m_cam.cam_pt, np.prod(m_cam.resolution))
+        d = d.reshape(np.flip(m_cam.resolution))
+        d = np.flip(d, axis=1)
+        axs[0].set_title("Euclidian distance")
+        axs[0].imshow(d, origin="lower")
+
+        print("Manipulating tFar")
+        d = dists.reshape(np.flip(m_cam.resolution))
+        d = np.flip(d, axis=1)
+        axs[1].set_title("tFar values from embree")
+        axs[1].imshow(d, origin="lower")
+
+        print("Calculating depths")
+        depth = trimesh.util.diagonal_dot(locs - o[0],
+                                          v[idx_ray])
+
+        pixel_ray = pixels[idx_ray]
+
+        # create a numpy array we can turn into an image
+        # doing it with uint8 creates an `L` mode greyscale image
+        a = np.zeros(np.flip(m_cam.resolution), dtype=np.uint16)
+
+        # scale depth against range (0.0 - 1.0)
+        depth_float = ((depth - depth.min()) / depth.ptp())
+
+        # convert depth into 0 - 255 uint8
+        uint16_max = np.iinfo(np.uint16).max
+
+        depth_int = (depth_float * uint16_max).round().astype(np.uint16)
+        # assign depth to correct pixel locations
+        # a[pixel_ray[:, 1], pixel_ray[:, 0]] = depth_int
+        a[pixel_ray[:, 1], pixel_ray[:, 0]] = np.round(depth)
+
+        axs[2].set_title("depth from internet example")
+        axs[2].imshow(a, origin="lower", interpolation="nearest", vmin=0, vmax=depth.max())
+
         plt.show()
+
+        # img = PIL.Image.fromarray(a)
+
+        # show the resulting image
+        # img.show()
 
         faulthandler.disable()
 
@@ -77,7 +119,6 @@ if __name__ == '__main__':
 
         a = trimesh.creation.axis(axis_length=100, axis_radius=5)
 
-        print(a)
         a.apply_translation(m_cam.cam_pt)
         scene.add_geometry(a)
 
@@ -88,4 +129,4 @@ if __name__ == '__main__':
 
             print(f"Wrote {len(locs)} pts")
 
-        # viewer = Viewer(scene)
+        viewer = Viewer(scene)
