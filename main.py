@@ -12,11 +12,11 @@ import trimesh
 from pyproj import Proj, Transformer
 
 from dtm.camera import DTCamera
-from dtm.helpers import generate_bbox, coord_string, Viewer, distmat
+from dtm.helpers import generate_bbox, coord_string, distmat
 from dtm.image import Image
-from embreeintersector import RayMeshIntersector
+from raytrace.embreeintersector import RayMeshIntersector
 
-from matplotlib import pyplot as plt, cm
+from matplotlib import pyplot as plt
 import PIL
 
 P_EPSG4326 = Proj("epsg:4326")
@@ -47,12 +47,31 @@ if __name__ == '__main__':
         cam.z_far = 100000
 
         scene.camera = cam
-        intersector = RayMeshIntersector(mesh)
+        pre_intersector = RayMeshIntersector(mesh)
 
         m_cam = DTCamera(image=img, coords=coords)
         m_cam.resolution = [img.width * 0.15, img.height * 0.15]
 
-        h, _, _, _ = intersector.intersects_location([m_cam.cam_pt], [[0, 0, -1]])
+        h, _, _, _ = pre_intersector.intersects_location([m_cam.cam_pt], [[0, 0, -1]])
+
+        # TODO: For efficiency improvements, we can cull most of the mesh that we don't need to perform queries on
+
+        # pre_o = np.tile(m_cam.cam_pt, (4, 1))  # Create for origin points
+        # pre_v = get_cam_corners(m_cam)
+        #
+        # print(pre_v)
+        #
+        # locs, _, _, _ = pre_intersector.intersects_location(pre_o, pre_v, multiple_hits=False)
+        # # print(faces)
+        #
+        # ep = create_exclude_polygon(locs)
+        #
+        # scene.add_geometry(ep)
+        #
+        # submesh = mesh.slice_plane(ep.facets_origin, ep.facets_normal)
+        # # submesh.show()
+
+        intersector = RayMeshIntersector(mesh)
 
         m_cam.z_offset = h[0, 2] * 2
         vectors, pixels = m_cam.to_rays()
@@ -101,16 +120,17 @@ if __name__ == '__main__':
         # assign depth to correct pixel locations
         # a[pixel_ray[:, 1], pixel_ray[:, 0]] = depth_int
         a[pixel_ray[:, 1], pixel_ray[:, 0]] = np.round(depth)
+        print(depth.dtype)
 
         axs[2].set_title("depth from internet example")
         axs[2].imshow(a, origin="lower", interpolation="nearest", vmin=0, vmax=depth.max())
 
-        plt.show()
+        # plt.show()
 
-        # img = PIL.Image.fromarray(a)
+        img = PIL.Image.fromarray(np.flip(a, axis=0).astype(np.float32), mode="F")
 
         # show the resulting image
-        # img.show()
+        img.save("depthmap.tiff", "TIFF")
 
         faulthandler.disable()
 
@@ -129,4 +149,4 @@ if __name__ == '__main__':
 
             print(f"Wrote {len(locs)} pts")
 
-        viewer = Viewer(scene)
+        # viewer = Viewer(scene)

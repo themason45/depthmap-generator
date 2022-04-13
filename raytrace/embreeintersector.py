@@ -375,8 +375,6 @@ class _EmbreeWrap(object):
 
         self.scene.intersect1M(context, rh)
 
-        print(rh.tfar)
-
         return rh.prim_id, rh.tfar
 
     def close(self):
